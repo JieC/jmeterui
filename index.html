@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+  body {
+    font: 12px sans-serif;
+  }
+  
+  .check {
+    background-color: #CBE4F5;
+    width: 1280px;
+  }
+  
+
+  
+  .axis path,
+  .axis line {
+    fill: none;
+    stroke: #000;
+    shape-rendering: crispEdges;
+  }
+  
+  .x.axis path {
+    display: none;
+  }
+  
+  .axis text {
+    font-size: 1em;
+  }
+  
+  .legend text {
+    font-size: 1em;
+  }
+  
+  .line {
+    fill: none;
+    stroke: red;
+    stroke-width: 1.5px;
+  }
+  
+  .area {
+    stroke: #53A6DD;
+    fill: #53A6DD;
+    fill-opacity: 0.3;
+  }
+</style>
+
+<body>
+  <div class="check"></div>
+  <script src="js/d3.min.js"></script>
+  <script>
+    var margin = {
+        top: 20,
+        right: 200,
+        bottom: 30,
+        left: 60
+      },
+      width = 1280 - margin.left - margin.right,
+      height = 640 - margin.top - margin.bottom;
+
+    var color = d3.scale.category10();
+
+    var x = d3.time.scale()
+      .range([0, width]);
+
+    var y0 = d3.scale.linear()
+      .range([height, 0]);
+
+    var y1 = d3.scale.linear()
+      .range([height, 0]);
+
+    var xAxis = d3.svg.axis()
+      .scale(x)
+      .orient("bottom")
+      .tickFormat(d3.time.format("%H:%M:%S"));
+
+    var y0Axis = d3.svg.axis()
+      .scale(y0)
+      .orient("left");
+
+    var y1Axis = d3.svg.axis()
+      .scale(y1)
+      .orient("right");
+
+    var emptyLine = d3.svg.line()
+      .x(function(d) {
+        return x(d.timeStamp);
+      })
+      .y(function(d) {
+        return height;
+      });
+
+    var line0 = d3.svg.line()
+      .x(function(d) {
+        return x(d.timeStamp);
+      })
+      .y(function(d) {
+        return y0(d.elapsed);
+      });
+
+    var line1 = d3.svg.line()
+      .x(function(d) {
+        return x(d.timeStamp);
+      })
+      .y(function(d) {
+        return y1(d.allThreads);
+      });
+
+    var area0 = d3.svg.area()
+      .x(function(d) {
+        return x(d.timeStamp);
+      })
+      .y0(height)
+      .y1(function(d) {
+        return y1(d.allThreads);
+      });
+
+    var selected = [];
+    var colorMap = {};
+    var colorMatrix = [["#F44336", "#E91E63", "#9C27B0", "#673AB7", "#3F51B5"],
+      ["#2196F3", "#03A9F4", "#00BCD4", "#009688", "#4CAF50"],
+      ["#8BC34A", "#CDDC39", "#FFEB3B", "#FFC107", "#FF9800"],
+      ["#FF5722", "#795548", "#9E9E9E", "#607D8B", "#000000"]];
+    var svg = d3.select("body").append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+    d3.csv("data/2.csv", function(error, data) {
+      var i = 0,
+        n = [],
+        m = {};
+      if (error) throw error;
+
+      data.forEach(function(d) {
+        d.timeStamp = new Date(+d.timeStamp + +d.elapsed);
+        d.elapsed = +d.elapsed;
+        d.allThreads = +d.allThreads;
+        if (m[d.label] === undefined) {
+          m[d.label] = i;
+          n.push({
+            name: d.label,
+            max: 0,
+            values: []
+          })
+          i++;
+        }
+        n[m[d.label]].values.push(d);
+        if (d.elapsed > n[m[d.label]].max) {
+          n[m[d.label]].max = d.elapsed;
+        }
+      });
+
+      color.domain(n.map(function(d) {
+        return d.name;
+      }));
+      //console.log(color.domain())
+      //console.log(color)
+      var checkboxes = d3.select("div")
+        .selectAll("label")
+        .data(color.domain())
+        .enter().append("label")
+      checkboxes.append("input")
+        .attr("type", "checkbox")
+        .attr("name", function(d) {
+          return d
+        })
+        .attr("value", function(d, i) {
+          return i
+        });
+      checkboxes.append('span')
+        .text(function(d) {
+          return d;
+        })
+
+      d3.selectAll("input").on('change', change);
+
+
+      // add legend   
+      legend = svg.append("g")
+        .attr("class", "legend")
+        .attr('transform', 'translate(' + width + ',0)')
+        
+
+      colorpicker = d3.select("body").append("svg")
+        .attr("class", "colorpicker")
+        .attr("width", 210)
+        .attr("height", 168)
+        .append("g")
+        
+      rows = colorpicker.selectAll("g")
+        .data(colorMatrix)
+        .enter()
+        .append('g')
+        .attr("class", "colorp")
+        .attr('transform', function(d, i) {return 'translate(0,' + (42*i) + ')'})
+      
+      rows.selectAll('rect')
+        .data(function(d) {return d;})
+        .enter()
+        .append('rect')
+          .attr("x", function(d, i) {
+            return i * 42;
+          })
+          .attr("width", 40)
+          .attr("height", 40)
+          .style("fill", function(d) {
+            return d;
+          })
+          .on('click', function(d){console.log(d)})
+        
+      function change() {
+
+        if (this.checked) {
+          selected.push(+this.value);
+          rescale();
+          svg.append("path")
+            .datum(n[this.value].values)
+            .attr("class", "line " + this.name)
+            .style("stroke", color(this.name))
+            .attr("d", emptyLine)
+            .transition()
+            .attr("d", line0)
+        } else {
+          selected.splice(selected.indexOf(+this.value), 1)
+          rescale();
+          svg.select("." + this.name)
+            .transition()
+            .attr("d", emptyLine)
+            .remove()
+        };
+        drawLegend()
+
+      }
+
+      function rescale() {
+        var y0Max = d3.max(n, function(d, i) {
+          if (selected.indexOf(i) !== -1) {
+            return d.max;
+          }
+        }) || 0;
+        if (y0Max !== y0.domain()[1]) {
+          y0.domain([0, y0Max]);
+          svg.select(".y0")
+            .transition()
+            .call(y0Axis);
+          svg.selectAll(".line").transition()
+            .attr("d", line0)
+        }
+      }
+
+      function drawLegend() {
+        legend.selectAll('*').remove()
+
+        legend.selectAll('rect')
+          .data(selected)
+          .enter()
+          .append("rect")
+          .attr("x", 45)
+          .attr("y", function(d, i) {
+            return i * 30;
+          })
+          .attr("width", 20)
+          .attr("height", 20)
+          .style("fill", function(d) {
+            return color(color.domain()[d])
+          })
+          .on('click', function(){console.log(this.style.fill)})
+
+        legend.selectAll('text')
+          .data(selected)
+          .enter()
+          .append("text")
+          .attr("x", 70)
+          .attr("y", function(d, i) {
+            return i * 30 + 15;
+          })
+          .text(function(d) {
+            return color.domain()[d]
+          })
+
+      }
+
+      x.domain(d3.extent(data, function(d) {
+        return d.timeStamp;
+      }));
+      y0.domain([0, 0]);
+      y1.domain([0, d3.max(data, function(d) {
+        return d.allThreads;
+      })]);
+
+      svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + height + ")")
+        .call(xAxis);
+
+      svg.append("g")
+        .attr("class", "y0 axis")
+        .call(y0Axis)
+        .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 6)
+        .attr("dy", ".71em")
+        .style("text-anchor", "end")
+        .text("Response Times(ms)");
+
+      svg.append("g")
+        .attr("class", "y1 axis")
+        .attr("transform", "translate(" + width + " ,0)")
+        .call(y1Axis)
+        .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", -14)
+        .attr("dy", "0.71em")
+        .style("text-anchor", "end")
+        .text("Users");
+
+      svg.append("path")
+        .datum(data)
+        .attr("class", "area")
+        .attr("d", area0);
+
+    });
+  </script>
